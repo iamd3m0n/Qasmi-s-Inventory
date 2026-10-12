@@ -93,7 +93,15 @@ th{font-size:12px;color:var(--muted);font-weight:600}
       <div class="formgrid">
         <div><label>Product name *</label><input name="name" required placeholder="e.g. Musk Attar"></div>
         <div><label>SKU / code (optional)</label><input name="sku" placeholder="e.g. ATT-001"></div>
-        <div><label>Category</label><input name="category" value="Attar"></div>
+        <div><label>Category</label>
+<select name="category">
+  <option value="Attar">Attar</option>
+  <option value="Perfume">Perfume</option>
+  <option value="Cosmetics">Cosmetics</option>
+  <option value="Accessories">Accessories</option>
+  <option value="Clothing">Clothing</option>
+  <option value="Other">Other</option>
+</select></div>
         <div><label>Purchase cost per unit (₹) *</label><input name="cost" type="number" min="0" step=".01" required value="0"></div>
         <div><label>Selling price per unit (₹) *</label><input name="price" type="number" min="0" step=".01" required value="0"></div>
         <div><label>Opening quantity *</label><input name="quantity" type="number" min="0" step="1" required value="0"></div>
