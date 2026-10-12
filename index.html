@@ -1,0 +1,226 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qasmi's Inventory</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--bg:#090f1e;--panel:#111b2d;--line:#27354b;--gold:#d7b56d;--muted:#9aa8bd;--white:#f4f6fb;--green:#70d6a0;--red:#ff8585}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--white);font:15px system-ui,-apple-system,sans-serif}
+button,input,select{font:inherit}
+button{cursor:pointer;border:0;border-radius:9px;padding:11px 15px;background:var(--gold);color:#101522;font-weight:700}
+button.secondary{background:#202d43;color:var(--white);border:1px solid var(--line)}
+button.danger{background:#51252e;color:#ffd9dc}
+input,select{width:100%;padding:11px;border:1px solid var(--line);border-radius:9px;background:#0c1525;color:var(--white);margin:5px 0 13px}
+label{font-size:12px;color:var(--muted)}
+header{padding:20px 5%;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{font-size:21px;font-weight:800;letter-spacing:.3px}.brand span{color:var(--gold)}
+small,.muted{color:var(--muted)}
+main{max-width:1200px;margin:auto;padding:25px 5% 50px}
+h1{font-size:27px;margin:0 0 5px}h2{font-size:17px;margin-top:0}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin:24px 0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;min-width:0}
+.metric{font-size:25px;font-weight:750;margin-top:8px;overflow-wrap:anywhere}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:24px 0}
+.tabs button.active{background:var(--gold);color:#101522}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:15px}
+.toolbar input{flex:1;min-width:160px;margin:0}
+table{width:100%;border-collapse:collapse;min-width:650px}
+th,td{text-align:left;padding:13px 10px;border-bottom:1px solid var(--line)}
+th{font-size:12px;color:var(--muted);font-weight:600}
+.tablewrap{overflow-x:auto}
+.pill{display:inline-block;border-radius:20px;padding:4px 9px;background:#243c34;color:var(--green);font-size:12px}
+.pill.low{background:#47282d;color:#ffaaaa}
+.formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 15px}
+.notice{padding:12px;border:1px solid var(--line);border-radius:10px;color:var(--muted);margin:14px 0}
+#message{margin:12px 0;color:var(--gold);overflow-wrap:anywhere}
+.hidden{display:none!important}
+#login{max-width:430px;margin:9vh auto;padding:25px}
+.actions{display:flex;gap:7px;flex-wrap:wrap}
+@media(max-width:700px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}main{padding-top:20px}.metric{font-size:21px}.formgrid{grid-template-columns:1fr}header{padding:16px 5%}h1{font-size:23px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">QASMI'S <span>INVENTORY</span><div class="muted" style="font-size:11px;font-weight:500">SHOP MANAGEMENT</div></div>
+  <button id="logout" class="secondary hidden" onclick="logout()">Log out</button>
+</header>
+
+<section id="login" class="card">
+  <h1>Welcome back.</h1>
+  <p class="muted">Sign in to manage your shop.</p>
+  <label>Email address</label><input id="email" type="email" autocomplete="username" placeholder="Your email">
+  <label>Password</label><input id="password" type="password" autocomplete="current-password" placeholder="Your password">
+  <button style="width:100%" onclick="login()">Sign in</button>
+  <div id="loginMessage"></div>
+</section>
+
+<main id="app" class="hidden">
+  <h1>Shop overview</h1>
+  <div class="muted">Your inventory, organised.</div>
+  <div class="grid">
+    <div class="card"><div class="muted">Products</div><div class="metric" id="productCount">0</div></div>
+    <div class="card"><div class="muted">Units in stock</div><div class="metric" id="stockCount">0</div></div>
+    <div class="card"><div class="muted">Low-stock items</div><div class="metric" id="lowCount">0</div></div>
+    <div class="card"><div class="muted">Today's sales</div><div class="metric" id="salesToday">₹0</div></div>
+  </div>
+
+  <div class="tabs">
+    <button class="active" onclick="showTab('inventory',this)">Inventory</button>
+    <button class="secondary" onclick="showTab('add',this)">+ Add product</button>
+    <button class="secondary" onclick="showTab('restock',this)">Restock</button>
+    <button class="secondary" onclick="showTab('history',this)">Stock history</button>
+  </div>
+  <div id="message" role="status"></div>
+
+  <section id="inventory">
+    <div class="toolbar">
+      <input id="search" placeholder="Search products..." oninput="renderProducts()">
+      <button onclick="loadData()">Refresh</button>
+    </div>
+    <div class="card tablewrap">
+      <table><thead><tr><th>Product</th><th>Category</th><th>Cost</th><th>Price</th><th>Stock</th><th>Status</th></tr></thead>
+      <tbody id="productRows"><tr><td colspan="6">Loading inventory...</td></tr></tbody></table>
+    </div>
+  </section>
+
+  <section id="add" class="card hidden">
+    <h2>Add a product</h2>
+    <form id="addForm">
+      <div class="formgrid">
+        <div><label>Product name *</label><input name="name" required placeholder="e.g. Musk Attar"></div>
+        <div><label>SKU / code (optional)</label><input name="sku" placeholder="e.g. ATT-001"></div>
+        <div><label>Category</label><input name="category" value="Attar"></div>
+        <div><label>Purchase cost per unit (₹) *</label><input name="cost" type="number" min="0" step=".01" required value="0"></div>
+        <div><label>Selling price per unit (₹) *</label><input name="price" type="number" min="0" step=".01" required value="0"></div>
+        <div><label>Opening quantity *</label><input name="quantity" type="number" min="0" step="1" required value="0"></div>
+        <div><label>Low-stock warning at</label><input name="threshold" type="number" min="0" step="1" value="5"></div>
+      </div>
+      <button type="submit">Save product</button>
+    </form>
+  </section>
+
+  <section id="restock" class="card hidden">
+    <h2>Restock inventory</h2>
+    <form id="restockForm">
+      <label>Product</label><select name="product" id="restockProduct" required></select>
+      <label>Quantity received</label><input name="quantity" type="number" min="1" step="1" required>
+      <label>Note (optional)</label><input name="note" placeholder="e.g. New supplier delivery">
+      <button type="submit">Add stock</button>
+    </form>
+  </section>
+
+  <section id="history" class="card hidden">
+    <h2>Stock movement history</h2>
+    <div class="tablewrap"><table><thead><tr><th>Date</th><th>Product</th><th>Action</th><th>Change</th><th>Note</th></tr></thead><tbody id="historyRows"></tbody></table></div>
+  </section>
+
+  <div class="notice">First version: inventory and restocking. We’ll add the sales workflow, profit reports, and secure transaction handling next. Export and backup will be added before you rely on this for real shop records.</div>
+</main>
+
+<script>
+const SUPABASE_URL = "PASTE_YOUR_PROJECT_URL_HERE";
+const SUPABASE_KEY = "PASTE_YOUR_PUBLISHABLE_KEY_HERE";
+let db = null, products = [], movements = [], sales = [];
+
+const money = n => new Intl.NumberFormat("en-IN",{style:"currency",currency:"INR",maximumFractionDigits:2}).format(Number(n)||0);
+const safe = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const el = id => document.getElementById(id);
+function say(text){el("message").textContent=text}
+function loginMessage(text){el("loginMessage").textContent=text}
+
+function init(){
+  if(SUPABASE_URL.includes("PASTE_") || SUPABASE_KEY.includes("PASTE_")){
+    loginMessage("Setup needed: add your Supabase Project URL and publishable key in the code first.");return;
+  }
+  db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  db.auth.getSession().then(({data,error})=>{
+    if(error) return loginMessage(error.message);
+    if(data.session) enterApp();
+  });
+}
+async function login(){
+  if(!db) return loginMessage("Add your Supabase connection details in the code first.");
+  const {error}=await db.auth.signInWithPassword({email:el("email").value.trim(),password:el("password").value});
+  if(error) return loginMessage(error.message);
+  loginMessage("");enterApp();
+}
+async function logout(){
+  await db.auth.signOut();el("app").classList.add("hidden");el("logout").classList.add("hidden");el("login").classList.remove("hidden");
+}
+async function enterApp(){
+  el("login").classList.add("hidden");el("app").classList.remove("hidden");el("logout").classList.remove("hidden");
+  await loadData();
+}
+function showTab(id,button){
+  ["inventory","add","restock","history"].forEach(t=>el(t).classList.toggle("hidden",t!==id));
+  document.querySelectorAll(".tabs button").forEach(b=>{b.classList.add("secondary");b.classList.remove("active")});
+  button.classList.remove("secondary");button.classList.add("active");
+}
+async function loadData(){
+  if(!db)return;
+  say("Loading...");
+  const [p,m,s]=await Promise.all([
+    db.from("products").select("*").order("name"),
+    db.from("stock_movements").select("*").order("created_at",{ascending:false}).limit(100),
+    db.from("sales").select("total_amount,created_at").gte("created_at",new Date(new Date().setHours(0,0,0,0)).toISOString())
+  ]);
+  if(p.error||m.error||s.error){say("Could not load data: "+(p.error||m.error||s.error).message);return}
+  products=p.data||[];movements=m.data||[];sales=s.data||[];
+  el("productCount").textContent=products.length;
+  el("stockCount").textContent=products.reduce((n,p)=>n+Number(p.quantity),0);
+  el("lowCount").textContent=products.filter(p=>Number(p.quantity)<=Number(p.low_stock_threshold)).length;
+  el("salesToday").textContent=money(sales.reduce((n,s)=>n+Number(s.total_amount),0));
+  renderProducts();renderRestockOptions();renderHistory();say("Inventory up to date.");
+}
+function renderProducts(){
+  const q=(el("search").value||"").toLowerCase();
+  const list=products.filter(p=>(p.name+" "+p.category+" "+(p.sku||"")).toLowerCase().includes(q));
+  el("productRows").innerHTML=list.length?list.map(p=>`<tr>
+    <td><strong>${safe(p.name)}</strong><br><small>${safe(p.sku||"No SKU")}</small></td>
+    <td>${safe(p.category)}</td><td>${money(p.cost_price)}</td><td>${money(p.selling_price)}</td>
+    <td>${Number(p.quantity)}</td><td>${Number(p.quantity)<=Number(p.low_stock_threshold)?'<span class="pill low">Low stock</span>':'<span class="pill">In stock</span>'}</td>
+  </tr>`).join(""):'<tr><td colspan="6">No products yet. Add your first product.</td></tr>';
+}
+function renderRestockOptions(){
+  el("restockProduct").innerHTML=products.length?products.map(p=>`<option value="${p.id}">${safe(p.name)} — ${p.quantity} in stock</option>`).join(""):'<option value="">Add a product first</option>';
+}
+function renderHistory(){
+  el("historyRows").innerHTML=movements.length?movements.map(m=>`<tr>
+    <td>${new Date(m.created_at).toLocaleString()}</td><td>${safe(m.product_name)}</td>
+    <td>${safe(m.movement_type)}</td><td>${Number(m.quantity_change)>0?"+":""}${Number(m.quantity_change)}</td><td>${safe(m.note||"—")}</td>
+  </tr>`).join(""):'<tr><td colspan="5">No stock movements recorded yet.</td></tr>';
+}
+el("addForm").addEventListener("submit",async e=>{
+  e.preventDefault();const f=new FormData(e.target);
+  const sku=String(f.get("sku")).trim()||null;
+  const item={name:String(f.get("name")).trim(),sku,category:String(f.get("category")).trim()||"General",cost_price:Number(f.get("cost")),selling_price:Number(f.get("price")),quantity:Number(f.get("quantity")),low_stock_threshold:Number(f.get("threshold"))};
+  if(!item.name||![item.cost_price,item.selling_price,item.quantity,item.low_stock_threshold].every(Number.isFinite))return say("Check the product details.");
+  say("Saving product...");
+  const {data,error}=await db.from("products").insert(item).select().single();
+  if(error)return say("Could not save: "+error.message);
+  if(item.quantity>0){
+    const {error:me}=await db.from("stock_movements").insert({product_id:data.id,product_name:data.name,movement_type:"restock",quantity_change:item.quantity,note:"Opening stock"});
+    if(me)return say("Product saved, but opening stock history failed. Please tell me this message: "+me.message);
+  }
+  e.target.reset();e.target.elements.category.value="Attar";e.target.elements.cost.value="0";e.target.elements.price.value="0";e.target.elements.quantity.value="0";e.target.elements.threshold.value="5";
+  await loadData();say("Product added successfully.");
+});
+el("restockForm").addEventListener("submit",async e=>{
+  e.preventDefault();const f=new FormData(e.target),id=f.get("product"),qty=Number(f.get("quantity")),note=String(f.get("note")).trim();
+  const p=products.find(x=>x.id===id);
+  if(!p||!Number.isInteger(qty)||qty<1)return say("Choose a product and enter a positive whole quantity.");
+  say("Updating stock...");
+  const {error}=await db.from("products").update({quantity:Number(p.quantity)+qty,updated_at:new Date().toISOString()}).eq("id",id);
+  if(error)return say("Stock was not updated: "+error.message);
+  const {error:me}=await db.from("stock_movements").insert({product_id:p.id,product_name:p.name,movement_type:"restock",quantity_change:qty,note:note||"Stock replenishment"});
+  if(me)return say("Stock changed, but history could not be saved. Please stop and tell me: "+me.message);
+  e.target.reset();await loadData();say("Restock recorded successfully.");
+});
+init();
+</script>
+</body>
+</html>
